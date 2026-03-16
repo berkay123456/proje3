@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>S&P 500 Historical Chart</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a14;
+      color: #e8e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 40px;
+    }
+
+    header {
+      width: 100%;
+      max-width: 900px;
+      margin-bottom: 24px;
+    }
+
+    h1 { font-size: 1.5rem; font-weight: 700; color: #fff; }
+
+    .subtitle { font-size: 0.8rem; color: #7878a0; margin-top: 2px; }
+
+    .price-row {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    #price { font-size: 2rem; font-weight: 700; color: #fff; }
+    #change { font-size: 0.95rem; font-weight: 600; }
+
+    .up   { color: #34d399; }
+    .down { color: #f87171; }
+
+    .ranges {
+      display: flex;
+      gap: 6px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+
+    .ranges button {
+      background: #1a1a2e;
+      border: 1px solid #2a2a44;
+      color: #8888b0;
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .ranges button.active,
+    .ranges button:hover {
+      background: #6d28d9;
+      border-color: #7c3aed;
+      color: #fff;
+    }
+
+    .chart-wrap {
+      width: 100%;
+      max-width: 900px;
+      background: #12121f;
+      border: 1px solid #1e1e35;
+      border-radius: 16px;
+      padding: 20px;
+      position: relative;
+      min-height: 420px;
+    }
+
+    canvas { width: 100% !important; }
+
+    #loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #12121f;
+      border-radius: 16px;
+      font-size: 0.9rem;
+      color: #8888b0;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 8px; height: 8px;
+      background: #7c3aed;
+      border-radius: 50%;
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.2; }
+    }
+
+    #error {
+      display: none;
+      color: #f87171;
+      font-size: 0.85rem;
+      margin-top: 12px;
+      text-align: center;
+      max-width: 900px;
+    }
+
+    footer {
+      margin-top: 20px;
+      font-size: 0.72rem;
+      color: #44445a;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>S&P 500</h1>
+  <p class="subtitle">Yahoo Finance · Haftalık kapanış fiyatları</p>
+  <div class="price-row">
+    <span id="price">—</span>
+    <span id="change">—</span>
+  </div>
+  <div class="ranges">
+    <button data-range="1y"  data-interval="1wk">1Y</button>
+    <button data-range="2y"  data-interval="1wk">2Y</button>
+    <button data-range="5y"  data-interval="1wk">5Y</button>
+    <button data-range="10y" data-interval="1wk" class="active">10Y</button>
+  </div>
+</header>
+
+<div class="chart-wrap">
+  <div id="loading"><div class="dot"></div> Yükleniyor…</div>
+  <canvas id="chart" height="380"></canvas>
+</div>
+
+<p id="error"></p>
+
+<!-- BIST 100 USD Section -->
+<header style="margin-top:48px;">
+  <h1>BIST 100 <span style="font-size:1rem;color:#7878a0;font-weight:400;">USD bazında</span></h1>
+  <p class="subtitle">Yahoo Finance · XU100.IS ÷ USDTRY · Haftalık</p>
+  <div class="price-row">
+    <span id="bist-price">—</span>
+    <span id="bist-change">—</span>
+  </div>
+  <div class="ranges" id="bist-ranges">
+    <button data-range="1y"  data-interval="1wk">1Y</button>
+    <button data-range="2y"  data-interval="1wk">2Y</button>
+    <button data-range="5y"  data-interval="1wk">5Y</button>
+    <button data-range="10y" data-interval="1wk" class="active">10Y</button>
+  </div>
+</header>
+
+<div class="chart-wrap">
+  <div id="bist-loading"><div class="dot"></div> Yükleniyor…</div>
+  <canvas id="bist-chart" height="380"></canvas>
+</div>
+
+<p id="bist-error" style="display:none;color:#f87171;font-size:.85rem;margin-top:12px;text-align:center;max-width:900px;"></p>
+
+<footer>Veriler Yahoo Finance'den alınmaktadır. Yatırım tavsiyesi değildir.</footer>
+
+<script>
+  let chartInstance = null;
+
+  async function fetchData(range, interval) {
+    const res = await fetch(`/api/sp500?range=${range}&interval=${interval}`);
+    if (!res.ok) throw new Error("Sunucu hatası: " + res.status);
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+
+    const result = json.chart?.result?.[0];
+    if (!result) throw new Error("Veri bulunamadı");
+
+    const timestamps = result.timestamp;
+    const closes    = result.indicators.quote[0].close;
+
+    const labels = [], values = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      if (closes[i] == null) continue;
+      labels.push(new Date(timestamps[i] * 1000).toLocaleDateString('tr-TR', {
+        day: 'numeric', month: 'short', year: 'numeric'
+      }));
+      values.push(Math.round(closes[i] * 100) / 100);
+    }
+    return { labels, values };
+  }
+
+  function renderChart(labels, values) {
+    const first = values[0];
+    const last  = values[values.length - 1];
+    const isUp  = last >= first;
+    const pct   = ((last - first) / first * 100).toFixed(2);
+    const color = isUp ? '#34d399' : '#f87171';
+    const fill  = isUp ? 'rgba(52,211,153,0.12)' : 'rgba(248,113,113,0.12)';
+
+    document.getElementById('price').textContent =
+      '$' + last.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const changeEl = document.getElementById('change');
+    changeEl.textContent = (isUp ? '▲ +' : '▼ ') + pct + '%';
+    changeEl.className   = isUp ? 'up' : 'down';
+
+    const ctx = document.getElementById('chart').getContext('2d');
+    if (chartInstance) chartInstance.destroy();
+
+    chartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          borderColor: color,
+          borderWidth: 2,
+          backgroundColor: fill,
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          pointHitRadius: 8,
+        }]
+      },
+      options: {
+        responsive: true,
+        animation: { duration: 400 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1e1e35',
+            titleColor: '#a0a0c0',
+            bodyColor: '#ffffff',
+            borderColor: '#2a2a44',
+            borderWidth: 1,
+            padding: 10,
+            callbacks: {
+              label: ctx => '$' + ctx.parsed.y.toLocaleString('en-US', {
+                minimumFractionDigits: 2, maximumFractionDigits: 2
+              })
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: '#1a1a2e' },
+            ticks: { color: '#5a5a7a', maxTicksLimit: 10, font: { size: 11 } }
+          },
+          y: {
+            position: 'right',
+            grid: { color: '#1a1a2e' },
+            ticks: {
+              color: '#5a5a7a',
+              font: { size: 11 },
+              callback: v => '$' + v.toLocaleString('en-US')
+            }
+          }
+        }
+      }
+    });
+  }
+
+  async function load(range, interval) {
+    document.getElementById('loading').style.display = 'flex';
+    document.getElementById('error').style.display   = 'none';
+    try {
+      const { labels, values } = await fetchData(range, interval);
+      renderChart(labels, values);
+    } catch (e) {
+      console.error(e);
+      const err = document.getElementById('error');
+      err.textContent = 'Hata: ' + e.message;
+      err.style.display = 'block';
+    } finally {
+      document.getElementById('loading').style.display = 'none';
+    }
+  }
+
+  document.querySelectorAll('.ranges button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.ranges button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      load(btn.dataset.range, btn.dataset.interval);
+    });
+  });
+
+  load('10y', '1wk');
+
+  // ── BIST 100 USD ──────────────────────────────────────────
+  let bistChartInstance = null;
+
+  async function fetchBist(range, interval) {
+    const res = await fetch(`/api/bist100usd?range=${range}&interval=${interval}`);
+    if (!res.ok) throw new Error("Sunucu hatası: " + res.status);
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+
+    const labels = json.timestamps.map(ts =>
+      new Date(ts * 1000).toLocaleDateString('tr-TR', {
+        day: 'numeric', month: 'short', year: 'numeric'
+      })
+    );
+    return { labels, values: json.closes };
+  }
+
+  function renderBist(labels, values) {
+    const first = values[0];
+    const last  = values[values.length - 1];
+    const isUp  = last >= first;
+    const pct   = ((last - first) / first * 100).toFixed(2);
+    const color = isUp ? '#34d399' : '#f87171';
+    const fill  = isUp ? 'rgba(52,211,153,0.12)' : 'rgba(248,113,113,0.12)';
+
+    document.getElementById('bist-price').textContent =
+      '$' + last.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const changeEl = document.getElementById('bist-change');
+    changeEl.textContent = (isUp ? '▲ +' : '▼ ') + pct + '%';
+    changeEl.className   = isUp ? 'up' : 'down';
+
+    const ctx = document.getElementById('bist-chart').getContext('2d');
+    if (bistChartInstance) bistChartInstance.destroy();
+
+    bistChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          borderColor: color,
+          borderWidth: 2,
+          backgroundColor: fill,
+          fill: true,
+          tension: 0.3,
+          pointRadius: 0,
+          pointHitRadius: 8,
+        }]
+      },
+      options: {
+        responsive: true,
+        animation: { duration: 400 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1e1e35',
+            titleColor: '#a0a0c0',
+            bodyColor: '#ffffff',
+            borderColor: '#2a2a44',
+            borderWidth: 1,
+            padding: 10,
+            callbacks: {
+              label: ctx => '$' + ctx.parsed.y.toLocaleString('en-US', {
+                minimumFractionDigits: 2, maximumFractionDigits: 2
+              })
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: '#1a1a2e' },
+            ticks: { color: '#5a5a7a', maxTicksLimit: 10, font: { size: 11 } }
+          },
+          y: {
+            position: 'right',
+            grid: { color: '#1a1a2e' },
+            ticks: {
+              color: '#5a5a7a',
+              font: { size: 11 },
+              callback: v => '$' + v.toLocaleString('en-US')
+            }
+          }
+        }
+      }
+    });
+  }
+
+  async function loadBist(range, interval) {
+    document.getElementById('bist-loading').style.display = 'flex';
+    document.getElementById('bist-error').style.display   = 'none';
+    try {
+      const { labels, values } = await fetchBist(range, interval);
+      renderBist(labels, values);
+    } catch (e) {
+      console.error(e);
+      const err = document.getElementById('bist-error');
+      err.textContent = 'Hata: ' + e.message;
+      err.style.display = 'block';
+    } finally {
+      document.getElementById('bist-loading').style.display = 'none';
+    }
+  }
+
+  document.querySelectorAll('#bist-ranges button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#bist-ranges button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadBist(btn.dataset.range, btn.dataset.interval);
+    });
+  });
+
+  loadBist('10y', '1wk');
+</script>
+</body>
+</html>
