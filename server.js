@@ -83,6 +83,11 @@ app.get("/api/bist100usd", async (req, res) => {
   }
 });
 
-app.listen(3001, () => {
-  console.log("Server running → http://localhost:3001");
-});
+// Local development
+if (process.env.NODE_ENV !== "production") {
+  app.listen(3001, () => {
+    console.log("Server running → http://localhost:3001");
+  });
+}
+
+export default app;
