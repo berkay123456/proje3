@@ -1,6 +1,11 @@
 {
-  "rewrites": [
-    { "source": "/api/sp500", "destination": "/api/sp500.js" },
-    { "source": "/api/bist100usd", "destination": "/api/bist100usd.js" }
+  "builds": [
+    { "src": "index.html", "use": "@vercel/static" },
+    { "src": "api/*.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/api/sp500", "dest": "/api/sp500.js" },
+    { "src": "/api/bist100usd", "dest": "/api/bist100usd.js" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
