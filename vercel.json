@@ -1,5 +1,7 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/server.js" }
+    { "source": "/api/sp500", "destination": "/api/sp500.js" },
+    { "source": "/api/bist100usd", "destination": "/api/bist100usd.js" },
+    { "source": "/(.*)", "destination": "/public/$1" }
   ]
 }
